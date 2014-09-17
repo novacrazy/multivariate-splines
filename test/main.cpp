@@ -241,6 +241,37 @@ bool test6()
     return is_identical(table, loadedTable);
 }
 
+bool test7()
+{
+    DataTable table;
+
+    auto x = std::vector<double>(3);
+    double y;
+    for(double i = -0.0001; i <= 0.0001; i += 0.000001)
+    {
+        for(double j = -0.01; j <= 0.01; j += 0.001)
+        {
+            for(double k = -0.01; k <= 0.01; k += 0.001)
+            {
+                x.at(0) = i;
+                x.at(1) = j;
+                x.at(2) = k;
+                y = i * j;
+                table.addSample(x, y);
+            }
+        }
+    }
+
+    table.save("test7.datatable", std::ios_base::binary);
+
+    DataTable loadedTable;
+    loadedTable.load("test7.datatable", std::ios_base::binary);
+
+    remove("test5.datatable");
+
+    return is_identical(table, loadedTable);
+}
+
 
 // Six-hump camelback function
 double f(DenseVector x)
@@ -294,14 +325,15 @@ void runExample()
 
 int main(int argc, char **argv)
 {
-    runExample();
+    //runExample();
 
-    cout << "test1(): " << (test1() ? "success" : "fail") << endl;
-    cout << "test2(): " << (test2() ? "success" : "fail") << endl;
-    cout << "test3(): " << (test3() ? "success" : "fail") << endl;
-    cout << "test4(): " << (test4() ? "success" : "fail") << endl;
-    cout << "test5(): " << (test5() ? "success" : "fail") << endl;
-    cout << "test6(): " << (test6() ? "success" : "fail") << endl;
+    //cout << "test1(): " << (test1() ? "success" : "fail") << endl;
+    //cout << "test2(): " << (test2() ? "success" : "fail") << endl;
+    //cout << "test3(): " << (test3() ? "success" : "fail") << endl;
+    //cout << "test4(): " << (test4() ? "success" : "fail") << endl;
+    //cout << "test5(): " << (test5() ? "success" : "fail") << endl;
+    //cout << "test6(): " << (test6() ? "success" : "fail") << endl;
+    cout << "test7(): " << (test7() ? "success" : "fail") << endl;
 
     return 0;
 }

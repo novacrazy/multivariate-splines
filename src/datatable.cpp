@@ -27,69 +27,64 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 namespace MultivariateSplines
 {
 
-//Simple definition of checked strto* functions according to the implementations of sto* C++11 functions at:
-//  http://msdn.microsoft.com/en-us/library/ee404775.aspx
-//  http://msdn.microsoft.com/en-us/library/ee404860.aspx
-//  https://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/include/bits/basic_string.h
-//  https://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/include/ext/string_conversions.h
+/*
+    To ensure greater platform support, conversion between endianness and data type sizes is supported.
+*/
 
-double checked_strtod(const char* _Str, char** _Eptr) {
+struct BinaryArch_Header {
+    //Not exactly necessary, but might be useful at some point.
+    uint8_t word_size, double_size;
 
-    double _Ret;
-    char* _EptrTmp;
-
-    errno = 0;
-
-    _Ret = std::strtod(_Str, &_EptrTmp);
-
-    if(_EptrTmp == _Str)
+    BinaryArch_Header()
+        : word_size(sizeof(unsigned int)), double_size(sizeof(double))
     {
-        throw std::invalid_argument("strtod");
     }
-    else if(errno == ERANGE)
-    {
-        throw std::out_of_range("strtod");
-    }
-    else
-    {
-        if(_Eptr != nullptr)
-        {
-            *_Eptr = _EptrTmp;
-        }
+};
 
-        return _Ret;
-    }
+static const uint16_t bigEndianBOM     = 0xFEFF;
+static const uint16_t littleEndianBOM  = 0xFFFE;
+
+inline bool isBigEndianBOM(const uint16_t& bom)
+{
+    return bom == bigEndianBOM;
 }
 
-int checked_strtol(const char* _Str, char** _Eptr, size_t _Base = 10) {
-
-    long _Ret;
-    char* _EptrTmp;
-
-    errno = 0;
-
-    _Ret = std::strtol(_Str, &_EptrTmp, _Base);
-
-    if(_EptrTmp == _Str)
-    {
-        throw std::invalid_argument("strtol");
-    }
-    else if(errno == ERANGE ||
-            (_Ret < std::numeric_limits<int>::min() || _Ret > std::numeric_limits<int>::max()))
-    {
-        throw std::out_of_range("strtol");
-    }
-    else
-    {
-        if(_Eptr != nullptr)
-        {
-            *_Eptr = _EptrTmp;
-        }
-
-        return _Ret;
-    }
+inline bool isLittleEndianBOM(const uint16_t& bom)
+{
+    return bom == littleEndianBOM;
 }
 
+/*
+    Taken from:
+
+    outFile << "# Saved DataTable" << '\n';
+    outFile << "# Number of samples: " << getNumSamples() << '\n';
+    outFile << "# Complete grid: " << (isGridComplete() ? "yes" : "no") << '\n';
+    outFile << "# xDim: " << numVariables << '\n';
+    outFile << numVariables << " " << 1 << '\n';
+*/
+
+struct DataTable_Header {
+    //Actually a BOM, but suitable for ensuring the header was loaded fully
+    uint16_t magic_const;
+
+    BinaryArch_Header arch;
+
+    //size_t would normally work, but this HAS to be cross-arch
+    uint64_t samples, xDim, yDim;
+    bool complete;
+
+    DataTable_Header(uint64_t s, uint64_t x, uint64_t y, bool c)
+        : samples(s), xDim(x), yDim(y), complete(c)
+    {
+        this->magic_const = Arch::isLittleEndian() ? littleEndianBOM : bigEndianBOM;
+    }
+
+    DataTable_Header()
+        : DataTable_Header(0, 0, 0, 0)
+    {
+    }
+};
 
 DataTable::DataTable()
     : DataTable(false, false)
@@ -258,7 +253,7 @@ std::vector<double> DataTable::getVectorY() const
  * Save and load *
  *****************/
 
-void DataTable::save(std::string fileName) const
+void DataTable::save(std::string fileName, std::ios_base::openmode mode) const
 {
 
     // To give a consistent format across all locales, use the C locale when saving and loading
@@ -268,33 +263,55 @@ void DataTable::save(std::string fileName) const
 
     try
     {
-        outFile.open(fileName);
+        outFile.open(fileName, mode | std::ios_base::out | std::ios_base::trunc);
     }
     catch(const std::ios_base::failure &e)
     {
         throw;
     }
 
-    // If this function is still alive the file must be open,
-    // no need to call is_open()
-
-    // Write header
-    outFile << "# Saved DataTable" << '\n';
-    outFile << "# Number of samples: " << getNumSamples() << '\n';
-    outFile << "# Complete grid: " << (isGridComplete() ? "yes" : "no") << '\n';
-    outFile << "# xDim: " << numVariables << '\n';
-    outFile << numVariables << " " << 1 << '\n';
-
-    for(auto it = cbegin(); it != cend(); it++)
+    if(mode & std::ios_base::binary)
     {
-        for(unsigned int i = 0; i < numVariables; i++)
+        DataTable_Header hdr(getNumSamples(), numVariables, 1, isGridComplete());
+
+        outFile.write(reinterpret_cast<const char*>(&hdr), sizeof(DataTable_Header));
+
+        double tmp;
+
+        for(auto it = cbegin(); it != cend(); it++)
         {
-            outFile << std::setprecision(SAVE_DOUBLE_PRECISION) << it->getX().at(i) << " ";
+            //Since this is a binary write, it can write directly from the data buffer in std::vector
+            outFile.write(reinterpret_cast<const char*>(it->getX().data()), sizeof(std::vector<double>::value_type) * hdr.xDim);
+
+            tmp = it->getY();
+
+            outFile.write(reinterpret_cast<const char*>(&tmp), sizeof(double));
         }
+    }
+    else
+    {
 
-        outFile << std::setprecision(SAVE_DOUBLE_PRECISION) << it->getY();
+        // If this function is still alive the file must be open,
+        // no need to call is_open()
 
-        outFile << '\n';
+        // Write header
+        outFile << "# Saved DataTable" << '\n';
+        outFile << "# Number of samples: " << getNumSamples() << '\n';
+        outFile << "# Complete grid: " << (isGridComplete() ? "yes" : "no") << '\n';
+        outFile << "# xDim: " << numVariables << '\n';
+        outFile << numVariables << " " << 1 << '\n';
+
+        for(auto it = cbegin(); it != cend(); it++)
+        {
+            for(unsigned int i = 0; i < numVariables; i++)
+            {
+                outFile << std::setprecision(SAVE_DOUBLE_PRECISION) << it->getX().at(i) << " ";
+            }
+
+            outFile << std::setprecision(SAVE_DOUBLE_PRECISION) << it->getY();
+
+            outFile << '\n';
+        }
     }
 
     // close() also flushes
@@ -310,7 +327,7 @@ void DataTable::save(std::string fileName) const
     std::locale::global(current_locale);
 }
 
-void DataTable::load(std::string fileName)
+void DataTable::load(std::string fileName, std::ios_base::openmode mode)
 {
 
     // To give a consistent format across all locales, use the C locale when saving and loading
@@ -320,58 +337,131 @@ void DataTable::load(std::string fileName)
 
     try
     {
-        inFile.open(fileName);
+        inFile.open(fileName, mode | std::ios_base::in);
     }
     catch(const std::ios_base::failure &e)
     {
         throw;
     }
 
-    // If this function is still alive the file must be open,
-    // no need to call is_open()
-
-    // Skip past comments
-    std::string line;
-
-    int nX, nY;
-    int state = 0;
-    while(std::getline(inFile, line))
+    if(mode & std::ios_base::binary)
     {
-        // Look for comment sign
-        if(line.at(0) == '#')
+        DataTable_Header hdr;
+
+        inFile.seekg(0);
+
+        inFile.read(reinterpret_cast<char*>(&hdr), sizeof(DataTable_Header));
+
+        std::cout << "0x" << std::hex << hdr.magic_const << std::endl;
+
+        std::cout << inFile.bad() << std::endl << inFile.fail() << std::endl << inFile.rdstate() << std::endl;
+
+        if(inFile.good() && !inFile.eof())
         {
-            continue;
+            if(isBigEndianBOM(hdr.magic_const) || isLittleEndianBOM(hdr.magic_const))
+            {
+
+                bool needs_endian_conversion = Arch::isLittleEndian() != isLittleEndianBOM(hdr.magic_const);
+                bool needs_size_conversion = sizeof(double) != hdr.arch.double_size;
+
+
+                std::cout << "needs_endian_conversion: " << std::boolalpha << needs_endian_conversion << std::endl;
+                std::cout << "needs_size_conversion: " << std::boolalpha << needs_size_conversion << std::endl;
+
+                std::cout << "xDim: " << std::dec << hdr.xDim << std::endl;
+                std::cout << "yDim: " << hdr.yDim << std::endl;
+                std::cout << "samples: " << hdr.samples << std::endl;
+                std::cout << "complete: " << std::boolalpha << hdr.complete << std::endl;
+
+                size_t count = 0;
+
+                size_t len = hdr.xDim + hdr.yDim;
+
+                //allocate enough for both dimensions to be loaded at once
+                //and since the dimensions don't change, we can re-use this buffer
+                double* tmp = new double[len];
+
+                memset(tmp, 0x0, sizeof(double) * len);
+
+                std::cout << "Starting read..." << std::endl;
+
+                inFile.read(reinterpret_cast<char*>(tmp), len * sizeof(double));
+
+                while(inFile.good() && !inFile.eof() && (count++ < hdr.samples))
+                {
+                    if(needs_endian_conversion) {
+                        std::for_each(tmp, &tmp[len], Arch::endian_reverse<double>::swap);
+                    }
+
+                    auto x = std::vector<double>(tmp, &tmp[hdr.xDim]);
+
+                    addSample(x, tmp[hdr.xDim]);
+
+                    inFile.read(reinterpret_cast<char*>(tmp), len * sizeof(double));
+                }
+
+                delete[] tmp;
+            }
+            else
+            {
+                throw std::out_of_range("Invalid BOM");
+            }
+        }
+        else
+        {
+            throw std::runtime_error("DataTable::load: Failed to read binary header");
         }
 
-        // Reading number of dimensions
-        else if(state == 0)
+    }
+    else
+    {
+
+        // If this function is still alive the file must be open,
+        // no need to call is_open()
+
+        // Skip past comments
+        std::string line;
+
+        int nX, nY;
+        int state = 0;
+        while(std::getline(inFile, line))
         {
-            nX = checked_strtol(line.c_str(), nullptr, 10);
-            nY = 1;
-            state = 1;
-        }
-
-        // Reading samples
-        else if(state == 1)
-        {
-            auto x = std::vector<double>(nX);
-            auto y = std::vector<double>(nY);
-
-            const char* str = line.c_str();
-            char* nextStr = nullptr;
-
-            for(int i = 0; i < nX; i++)
+            // Look for comment sign
+            if(line.at(0) == '#')
             {
-                x.at(i) = checked_strtod(str, &nextStr);
-                str = nextStr;
-            }
-            for(int j = 0; j < nY; j++)
-            {
-                y.at(j) = checked_strtod(str, &nextStr);
-                str = nextStr;
+                continue;
             }
 
-            addSample(x, y.at(0));
+            // Reading number of dimensions
+            else if(state == 0)
+            {
+                nX = checked_strtol(line.c_str());
+                nY = 1;
+                state = 1;
+            }
+
+            // Reading samples
+            else if(state == 1)
+            {
+                auto x = std::vector<double>(nX);
+                auto y = std::vector<double>(nY);
+
+                const char* str = line.c_str();
+                char* nextStr = nullptr;
+
+                for(int i = 0; i < nX; i++)
+                {
+                    x.at(i) = checked_strtod(str, &nextStr);
+                    str = nextStr;
+                }
+                for(int j = 0; j < nY; j++)
+                {
+                    y.at(j) = checked_strtod(str, &nextStr);
+                    str = nextStr;
+                }
+
+                addSample(x, y.at(0));
+            }
         }
     }
 

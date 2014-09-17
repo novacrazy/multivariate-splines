@@ -82,6 +82,7 @@ set(SRC_LIST
     src/basis.cpp
     src/basis1d.cpp
     src/bspline.cpp
+    src/common.cpp
     src/datasample.cpp
     src/datatable.cpp
     src/mykroneckerproduct.cpp
