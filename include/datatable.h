@@ -64,8 +64,8 @@ public:
     /*
      * Save and load functionality
      */
-    void save(std::string fileName) const;  // Throws std::ios_base::failure
-    void load(std::string fileName);        // Throws std::ios_base::failure
+    void save(std::string fileName, std::ios_base::openmode = std::ios_base::openmode(0) ) const;  // Throws std::ios_base::failure
+    void load(std::string fileName, std::ios_base::openmode = std::ios_base::openmode(0) );        // Throws std::ios_base::failure
 
     /*
      * Debug

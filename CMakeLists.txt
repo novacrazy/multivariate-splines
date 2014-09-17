@@ -73,7 +73,7 @@ set(SRC_LIST
     include/bspline.h
     include/datasample.h
     include/datatable.h
-    include/generaldefinitions.h
+    include/common.h
     include/linearsolvers.h
     include/mykroneckerproduct.h
     include/pspline.h

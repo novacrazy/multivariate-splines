@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #ifndef MS_BSPLINEBASIS_H
 #define MS_BSPLINEBASIS_H
 
-#include "generaldefinitions.h"
+#include "common.h"
 #include "basis1d.h"
 
 namespace MultivariateSplines

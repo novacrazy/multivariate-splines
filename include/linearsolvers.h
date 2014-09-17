@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #ifndef MS_LINEARSOLVER_H
 #define MS_LINEARSOLVER_H
 
-#include "generaldefinitions.h"
+#include "common.h"
 #include "Eigen/IterativeLinearSolvers"
 #include "Eigen/SparseQR"
 

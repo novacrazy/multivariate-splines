@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #ifndef MS_SPLINE_H
 #define MS_SPLINE_H
 
-#include "generaldefinitions.h"
+#include "common.h"
 
 namespace MultivariateSplines
 {

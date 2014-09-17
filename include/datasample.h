@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #ifndef MS_DATASAMPLE_H
 #define MS_DATASAMPLE_H
 
-#include "generaldefinitions.h"
+#include "common.h"
 
 namespace MultivariateSplines
 {

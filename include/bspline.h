@@ -22,7 +22,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define MS_BSPLINE_H
 
 #include "datatable.h"
-#include "generaldefinitions.h"
+#include "common.h"
 #include "spline.h"
 #include "basis.h"
 
