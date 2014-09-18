@@ -22,7 +22,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <string>
 #include <fstream>
 #include <stdexcept>
-#include <limits>
 
 namespace MultivariateSplines
 {
@@ -31,27 +30,18 @@ namespace MultivariateSplines
     To ensure greater platform support, conversion between endianness and data type sizes is supported.
 */
 
-struct BinaryArch_Header {
-    //Not exactly necessary, but might be useful at some point.
-    uint8_t word_size, double_size;
-
-    BinaryArch_Header()
-        : word_size(sizeof(unsigned int)), double_size(sizeof(double))
-    {
-    }
-};
-
-static const uint16_t bigEndianBOM     = 0xFEFF;
-static const uint16_t littleEndianBOM  = 0xFFFE;
+//Standard Big-Endian BOM, which is converted to little endian on little endian machines.
+static const uint16_t binaryBOM         = 0xFEFF;
+static const uint16_t binaryBOMSwapped  = 0xFFFE;
 
 inline bool isBigEndianBOM(const uint16_t& bom)
 {
-    return bom == bigEndianBOM;
+    return bom == binaryBOM;
 }
 
 inline bool isLittleEndianBOM(const uint16_t& bom)
 {
-    return bom == littleEndianBOM;
+    return bom == binaryBOMSwapped;
 }
 
 /*
@@ -64,25 +54,31 @@ inline bool isLittleEndianBOM(const uint16_t& bom)
     outFile << numVariables << " " << 1 << '\n';
 */
 
-struct DataTable_Header {
+struct DataTable_Header
+{
     //Actually a BOM, but suitable for ensuring the header was loaded fully
     uint16_t magic_const;
-
-    BinaryArch_Header arch;
 
     //size_t would normally work, but this HAS to be cross-arch
     uint64_t samples, xDim, yDim;
     bool complete;
 
     DataTable_Header(uint64_t s, uint64_t x, uint64_t y, bool c)
-        : samples(s), xDim(x), yDim(y), complete(c)
+        : samples(s), xDim(x), yDim(y), complete(c), magic_const(binaryBOM)
     {
-        this->magic_const = Arch::isLittleEndian() ? littleEndianBOM : bigEndianBOM;
     }
 
     DataTable_Header()
         : DataTable_Header(0, 0, 0, 0)
     {
+    }
+
+    void swap_endianness()
+    {
+        Arch::endianness<uint64_t>::swap(this->samples);
+        Arch::endianness<uint64_t>::swap(this->xDim);
+        Arch::endianness<uint64_t>::swap(this->yDim);
+        Arch::endianness<uint16_t>::swap(this->magic_const);
     }
 };
 
@@ -264,6 +260,12 @@ void DataTable::save(std::string fileName, std::ios_base::openmode mode) const
     try
     {
         outFile.open(fileName, mode | std::ios_base::out | std::ios_base::trunc);
+
+        if(outFile.fail())
+        {
+            throw std::fstream::failure("DataTable::save: Failed to open output file.");
+        }
+
     }
     catch(const std::ios_base::failure &e)
     {
@@ -338,6 +340,12 @@ void DataTable::load(std::string fileName, std::ios_base::openmode mode)
     try
     {
         inFile.open(fileName, mode | std::ios_base::in);
+
+        if(inFile.fail())
+        {
+            throw std::fstream::failure("DataTable::load: Failed to open input file.");
+        }
+
     }
     catch(const std::ios_base::failure &e)
     {
@@ -348,85 +356,64 @@ void DataTable::load(std::string fileName, std::ios_base::openmode mode)
     {
         DataTable_Header hdr;
 
-        inFile.seekg(0);
-
         inFile.read(reinterpret_cast<char*>(&hdr), sizeof(DataTable_Header));
 
-        std::cout << "0x" << std::hex << hdr.magic_const << std::endl;
-
-        std::cout << inFile.bad() << std::endl << inFile.fail() << std::endl << inFile.rdstate() << std::endl;
-
-        if(inFile.good() && !inFile.eof())
+        if(inFile.fail() && !inFile.eof())
         {
-            if(isBigEndianBOM(hdr.magic_const) || isLittleEndianBOM(hdr.magic_const))
+            throw std::fstream::failure("DataTable::load: Problem reading header");
+        }
+        else if(isBigEndianBOM(hdr.magic_const) || isLittleEndianBOM(hdr.magic_const))
+        {
+            bool needs_endian_conversion = Arch::isLittleEndian() != isLittleEndianBOM(hdr.magic_const);
+
+            if(needs_endian_conversion)
             {
+                hdr.swap_endianness();
+            }
 
-                bool needs_endian_conversion = Arch::isLittleEndian() != isLittleEndianBOM(hdr.magic_const);
-                bool needs_size_conversion = sizeof(double) != hdr.arch.double_size;
+            size_t count = 0;
 
+            size_t len = hdr.xDim + hdr.yDim;
 
-                std::cout << "needs_endian_conversion: " << std::boolalpha << needs_endian_conversion << std::endl;
-                std::cout << "needs_size_conversion: " << std::boolalpha << needs_size_conversion << std::endl;
+            //allocate enough for both dimensions to be loaded at once
+            //and since the dimensions don't change, we can re-use this buffer
 
-                std::cout << "xDim: " << std::dec << hdr.xDim << std::endl;
-                std::cout << "yDim: " << hdr.yDim << std::endl;
-                std::cout << "samples: " << hdr.samples << std::endl;
-                std::cout << "complete: " << std::boolalpha << hdr.complete << std::endl;
+            double* tmp = new double[len];
 
-                size_t count = 0;
+            //memset(tmp, 0x0, sizeof(double) * len);
 
-                size_t len = hdr.xDim + hdr.yDim;
+            inFile.read(reinterpret_cast<char*>(tmp), len * sizeof(double));
 
-                //allocate enough for both dimensions to be loaded at once
-                //and since the dimensions don't change, we can re-use this buffer
-                double* tmp = new double[len];
-
-                memset(tmp, 0x0, sizeof(double) * len);
-
-                std::cout << "Starting read..." << std::endl;
-
-                inFile.read(reinterpret_cast<char*>(tmp), len * sizeof(double));
-
-                while(inFile.good() && !inFile.eof() && (count++ < hdr.samples))
+            while(inFile.good() && !inFile.eof() && (count++ < hdr.samples))
+            {
+                if(needs_endian_conversion)
                 {
-                    if(needs_endian_conversion) {
-                        std::for_each(tmp, &tmp[len], Arch::endian_reverse<double>::swap);
-                    }
-
-                    auto x = std::vector<double>(tmp, &tmp[hdr.xDim]);
-
-                    addSample(x, tmp[hdr.xDim]);
-
-                    inFile.read(reinterpret_cast<char*>(tmp), len * sizeof(double));
+                    std::for_each(tmp, &tmp[len], Arch::endianness<double>::swap);
                 }
 
-                delete[] tmp;
+                auto x = std::vector<double>(tmp, &tmp[hdr.xDim]);
+
+                addSample(x, tmp[hdr.xDim]);
+
+                inFile.read(reinterpret_cast<char*>(tmp), len * sizeof(double));
             }
-            else
-            {
-                throw std::out_of_range("Invalid BOM");
-            }
+
+            delete[] tmp;
         }
         else
         {
-            throw std::runtime_error("DataTable::load: Failed to read binary header");
+            throw std::out_of_range("DataTable::load: Invalid BOM");
         }
-
     }
     else
     {
-
-        // If this function is still alive the file must be open,
-        // no need to call is_open()
-
-        // Skip past comments
         std::string line;
 
         int nX, nY;
         int state = 0;
         while(std::getline(inFile, line))
         {
-            // Look for comment sign
+            // Look for comment sign and skip the line
             if(line.at(0) == '#')
             {
                 continue;

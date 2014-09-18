@@ -4,6 +4,9 @@
 
 #include <iostream>
 #include <iomanip>
+#include <limits>
+
+static_assert(std::numeric_limits<double>::is_iec559, "This library requires a floating point format conformant to IEEE 754");
 
 #include <vector>
 #include <Eigen/Dense>
@@ -27,7 +30,7 @@ typedef Eigen::SparseMatrix<double> SparseMatrix; // declares a column-major spa
 //  https://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/include/bits/basic_string.h
 //  https://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/include/ext/string_conversions.h
 //
-//See common.cpp for implementations
+//See src/common.cpp for implementations
 double checked_strtod(const char*, char** = nullptr);
 int checked_strtol(const char*, char** = nullptr, size_t = 10);
 
@@ -52,10 +55,10 @@ namespace Arch {
     }
 
     template <typename T, size_t N = sizeof( T )>
-    struct endian_reverse {};
+    struct endianness {};
 
     template <typename T>
-    struct endian_reverse<T, sizeof( uint16_t )>
+    struct endianness<T, sizeof( uint16_t )>
     {
         inline static T swap( const T& value )
         {
@@ -68,7 +71,7 @@ namespace Arch {
     };
 
     template <typename T>
-    struct endian_reverse<T, sizeof( uint32_t )>
+    struct endianness<T, sizeof( uint32_t )>
     {
         inline static T swap( const T& value )
         {
@@ -83,7 +86,7 @@ namespace Arch {
     };
 
     template <typename T>
-    struct endian_reverse<T, sizeof( uint64_t )>
+    struct endianness<T, sizeof( uint64_t )>
     {
         inline static T swap( const T& value )
         {
