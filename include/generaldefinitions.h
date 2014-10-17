@@ -1,28 +1,23 @@
 /*
-This file is part of the Multivariate Splines library.
-Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; if not, write to the Free Software Foundation, Inc.,
-51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * This file is part of the Multivariate Splines library.
+ * Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 
-#ifndef GENERALDEFINITIONS_H
-#define GENERALDEFINITIONS_H
+#ifndef MS_GENERALDEFINITIONS_H
+#define MS_GENERALDEFINITIONS_H
 
-#include <iostream>
-#include <iomanip>
+#ifndef NDEBUG
+    #include <iostream>
+    #include <iomanip>
+#endif // NDEBUG
+
+#include <exception>
+#include <stdexcept>
 
 #include <vector>
 #include <Eigen/Dense>
@@ -39,6 +34,24 @@ typedef Eigen::SparseVector<double> SparseVector;
 typedef Eigen::MatrixXd DenseMatrix;
 typedef Eigen::SparseMatrix<double> SparseMatrix; // declares a column-major sparse matrix type of double
 
+class Exception : public std::exception
+{
+private:
+    std::string __what;
+
+public:
+
+    Exception(const std::string& what)
+        : __what(what)
+    {
+    }
+
+    const char* what() const throw()
+    {
+        return this->__what.c_str();
+    }
+};
+
 } // namespace MultivariateSplines
 
-#endif // GENERALDEFINITIONS_H
+#endif // MS_GENERALDEFINITIONS_H

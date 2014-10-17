@@ -1,30 +1,87 @@
 /*
-This file is part of the Multivariate Splines library.
-Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; if not, write to the Free Software Foundation, Inc.,
-51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * This file is part of the Multivariate Splines library.
+ * Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
-
 
 #include "datatable.h"
 
-#include <iomanip> // Set precision used by streams on double values
+#include <string>
 #include <fstream>
+#include <iomanip>
+
+#include <stdexcept>
+#include <limits>
 
 namespace MultivariateSplines
 {
+
+//Simple definition of checked strto* functions according to the implementations of sto* C++11 functions at:
+//  http://msdn.microsoft.com/en-us/library/ee404775.aspx
+//  http://msdn.microsoft.com/en-us/library/ee404860.aspx
+//  https://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/include/bits/basic_string.h
+//  https://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/include/ext/string_conversions.h
+
+double checked_strtod(const char* _Str, char** _Eptr) {
+
+    double _Ret;
+    char* _EptrTmp;
+
+    errno = 0;
+
+    _Ret = std::strtod(_Str, &_EptrTmp);
+
+    if(_EptrTmp == _Str)
+    {
+        throw std::invalid_argument("strtod");
+    }
+    else if(errno == ERANGE)
+    {
+        throw std::out_of_range("strtod");
+    }
+    else
+    {
+        if(_Eptr != nullptr)
+        {
+            *_Eptr = _EptrTmp;
+        }
+
+        return _Ret;
+    }
+}
+
+int checked_strtol(const char* _Str, char** _Eptr, size_t _Base = 10) {
+
+    long _Ret;
+    char* _EptrTmp;
+
+    errno = 0;
+
+    _Ret = std::strtol(_Str, &_EptrTmp, _Base);
+
+    if(_EptrTmp == _Str)
+    {
+        throw std::invalid_argument("strtol");
+    }
+    else if(errno == ERANGE ||
+            (_Ret < std::numeric_limits<int>::min() || _Ret > std::numeric_limits<int>::max()))
+    {
+        throw std::out_of_range("strtol");
+    }
+    else
+    {
+        if(_Eptr != nullptr)
+        {
+            *_Eptr = _EptrTmp;
+        }
+
+        return _Ret;
+    }
+}
+
 
 DataTable::DataTable()
     : DataTable(false, false)
@@ -74,8 +131,11 @@ void DataTable::addSample(const DataSample &sample)
     {
         if(!allowDuplicates)
         {
+#ifndef NDEBUG
             std::cout << "Discarding duplicate sample because allowDuplicates is false!" << std::endl;
             std::cout << "Initialise with DataTable(true) to set it to true." << std::endl;
+#endif // NDEBUG
+
             return;
         }
 
@@ -123,10 +183,9 @@ void DataTable::initDataStructures()
 
 void DataTable::gridCompleteGuard() const
 {
-    if(!isGridComplete() && !allowIncompleteGrid)
+    if(!(isGridComplete() || allowIncompleteGrid))
     {
-        std::cout << "The grid is not complete yet!" << std::endl;
-        exit(1);
+        throw Exception("DataTable::gridCompleteGuard: The grid is not complete yet!");
     }
 }
 
@@ -195,6 +254,10 @@ std::vector<double> DataTable::getVectorY() const
 
 void DataTable::save(std::string fileName) const
 {
+
+    // To give a consistent format across all locales, use the C locale when saving and loading
+    std::locale current_locale = std::locale::global(std::locale("C"));
+
     std::ofstream outFile;
 
     try
@@ -218,7 +281,7 @@ void DataTable::save(std::string fileName) const
 
     for(auto it = cbegin(); it != cend(); it++)
     {
-        for(int i = 0; i < numVariables; i++)
+        for(unsigned int i = 0; i < numVariables; i++)
         {
             outFile << std::setprecision(SAVE_DOUBLE_PRECISION) << it->getX().at(i) << " ";
         }
@@ -237,10 +300,16 @@ void DataTable::save(std::string fileName) const
     {
         throw;
     }
+
+    std::locale::global(current_locale);
 }
 
 void DataTable::load(std::string fileName)
 {
+
+    // To give a consistent format across all locales, use the C locale when saving and loading
+    std::locale current_locale = std::locale::global(std::locale("C"));
+
     std::ifstream inFile;
 
     try
@@ -264,14 +333,15 @@ void DataTable::load(std::string fileName)
     {
         // Look for comment sign
         if(line.at(0) == '#')
+        {
             continue;
+        }
 
         // Reading number of dimensions
-        if(state == 0)
+        else if(state == 0)
         {
-            std::string::size_type sz = 0;
-            nX = std::stoi(line, &sz);
-            nY = std::stoi(line.substr(sz));
+            nX = checked_strtol(line.c_str(), nullptr, 10);
+            nY = 1;
             state = 1;
         }
 
@@ -280,16 +350,19 @@ void DataTable::load(std::string fileName)
         {
             auto x = std::vector<double>(nX);
             auto y = std::vector<double>(nY);
-            std::string::size_type sz = 0;
+
+            const char* str = line.c_str();
+            char* nextStr = nullptr;
+
             for(int i = 0; i < nX; i++)
             {
-                line = line.substr(sz);
-                x.at(i) = std::stod(line, &sz);
+                x.at(i) = checked_strtod(str, &nextStr);
+                str = nextStr;
             }
             for(int j = 0; j < nY; j++)
             {
-                line = line.substr(sz);
-                y.at(j) = std::stod(line, &sz);
+                y.at(j) = checked_strtod(str, &nextStr);
+                str = nextStr;
             }
 
             addSample(x, y.at(0));
@@ -305,36 +378,8 @@ void DataTable::load(std::string fileName)
     {
         throw;
     }
-}
 
-/**************
- * Debug code *
- **************/
-void DataTable::printSamples() const
-{
-    for(auto &sample : samples)
-    {
-        std::cout << sample << std::endl;
-    }
-}
-
-void DataTable::printGrid() const
-{
-    std::cout << "===== Printing grid =====" << std::endl;
-
-    unsigned int i = 0;
-    for(auto &variable : grid)
-    {
-        std::cout << "x" << i++ << "(" << variable.size() << "): ";
-        for(double value : variable)
-        {
-            std::cout << value << " ";
-        }
-        std::cout << std::endl;
-    }
-
-    std::cout << "Unique samples added: " << samples.size() << std::endl;
-    std::cout << "Samples required: " << getNumSamplesRequired() << std::endl;
+    std::locale::global(current_locale);
 }
 
 } // namespace MultivariateSplines

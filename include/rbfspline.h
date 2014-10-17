@@ -1,25 +1,15 @@
 /*
-This file is part of the Multivariate Splines library.
-Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; if not, write to the Free Software Foundation, Inc.,
-51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * This file is part of the Multivariate Splines library.
+ * Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 
-#ifndef RADIALBASISFUNCTION_H
-#define RADIALBASISFUNCTION_H
+#ifndef MS_RBFSPLINE_H
+#define MS_RBFSPLINE_H
 
 #include "datatable.h"
 #include "spline.h"
@@ -46,7 +36,7 @@ public:
     RadialBasisFunction() : e(1.0) {}
     RadialBasisFunction(double e) : e(e) {}
     virtual double eval(double r) const = 0;
-    // virtual double grad(double r) const = 0; // TODO: implement gradient
+    virtual double evalDerivative(double r) const = 0;
 protected:
     double e;
 };
@@ -58,6 +48,10 @@ public:
     {
         return (r<=0.0) ? 0.0 : r*r*std::log(r);
     }
+    double evalDerivative(double r) const
+    {
+        return (r<=0.0) ? 0.0 : r*(2*log(r) + 1);
+    }
 };
 
 class Multiquadric : public RadialBasisFunction
@@ -66,6 +60,10 @@ public:
     double eval(double r) const
     {
         return std::sqrt(1.0 + e*e*r*r);
+    }
+    double evalDerivative(double r) const
+    {
+        return e*e*r/std::sqrt(1 + e*e*r*r);
     }
 };
 
@@ -76,6 +74,10 @@ public:
     {
         return 1.0/std::sqrt(1.0 + e*e*r*r);
     }
+    double evalDerivative(double r) const
+    {
+        return -e*e*r/(std::sqrt(1 + e*e*r*r)*(1 + e*e*r*r));
+    }
 };
 
 class InverseQuadric : public RadialBasisFunction
@@ -85,6 +87,10 @@ public:
     {
         return 1.0/(1.0 + e*e*r*r);
     }
+    double evalDerivative(double r) const
+    {
+        return -2*e*e*r/((1 + e*e*r*r)*(1 + e*e*r*r));
+    }
 };
 
 class Gaussian : public RadialBasisFunction
@@ -93,6 +99,10 @@ public:
     double eval(double r) const
     {
         return std::exp(-e*e*r*r);
+    }
+    double evalDerivative(double r) const
+    {
+        return -2*e*e*r*std::exp(-e*e*r*r);
     }
 };
 
@@ -106,16 +116,16 @@ class RBFSpline : public Spline
 {
 public:
 
-    RBFSpline(DataTable &samples, RadialBasisFunctionType type);
-    RBFSpline(DataTable &samples, RadialBasisFunctionType type, bool normalized);
+    RBFSpline(const DataTable &samples, RadialBasisFunctionType type);
+    RBFSpline(const DataTable &samples, RadialBasisFunctionType type, bool normalized);
 
     virtual RBFSpline* clone() const { return new RBFSpline(*this); }
 
-    double eval(DenseVector &x) const;
-    double eval(std::vector<double> &x) const;
+    double eval(DenseVector x) const;
+    double eval(std::vector<double> x) const;
 
-    DenseMatrix evalJacobian(DenseVector &x) const {}; // TODO: implement via RBF_fn
-    DenseMatrix evalHessian(DenseVector &x) const {}; // TODO: implement via RBF_fn
+    DenseMatrix evalJacobian(DenseVector x) const {}; // TODO: implement via RBF_fn
+    DenseMatrix evalHessian(DenseVector x) const {}; // TODO: implement via RBF_fn
     //    std::vector<double> getDomainUpperBound() const;
     //    std::vector<double> getDomainLowerBound() const;
 
@@ -133,9 +143,9 @@ private:
 
     DenseMatrix computePreconditionMatrix() const;
 
-    double dist(const std::vector<double> x, const std::vector<double> y) const;
-    double dist(const DataSample &x, const DataSample &y) const;
-    bool dist_sort(const DataSample &x, const DataSample &y) const;
+    double dist(std::vector<double> x, std::vector<double> y) const;
+    double dist(DataSample x, DataSample y) const;
+    bool dist_sort(DataSample x, DataSample y) const;
 
 };
 
@@ -229,4 +239,4 @@ private:
 
 } // namespace MultivariateSplines
 
-#endif // RADIALBASISFUNCTION_H
+#endif // MS_RBFSPLINE_H

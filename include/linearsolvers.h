@@ -1,25 +1,15 @@
 /*
-This file is part of the Multivariate Splines library.
-Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; if not, write to the Free Software Foundation, Inc.,
-51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * This file is part of the Multivariate Splines library.
+ * Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 
-#ifndef LINEARSOLVER_H
-#define LINEARSOLVER_H
+#ifndef MS_LINEARSOLVER_H
+#define MS_LINEARSOLVER_H
 
 #include "generaldefinitions.h"
 #include "Eigen/IterativeLinearSolvers"
@@ -28,27 +18,22 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 namespace MultivariateSplines
 {
 
-using std::cout;
-using std::endl;
-
 template<class lhs, class rhs>
 class LinearSolver
 {
 public:
     bool solve(const lhs &A, const rhs &b, rhs &x) const
     {
-        if (!consistentData(A,b))
+        if (!consistentData(A, b))
         {
-            cout << "Inconsistent matrix dimensions!" << endl;
-            return false;
+            throw Exception("LinearSolver::solve: Inconsistent matrix dimensions!");
         }
 
-        bool success = doSolve(A,b,x);
+        bool success = doSolve(A, b, x);
 
-        if (!success || !validSolution(A,b,x))
+        if (!(success && validSolution(A, b, x)))
         {
-            cout << "Solver did not converge to acceptable tolerance!" << endl;
-            return false;
+            throw Exception("LinearSolver::solve: Solver did not converge to acceptable tolerance!");
         }
         return true;
     }
@@ -60,20 +45,19 @@ private:
 
     bool consistentData(const lhs &A, const rhs &b) const
     {
-        if (A.rows() != b.rows())
-            return false;
-        return true;
+        return A.rows() == b.rows();
     }
 
     bool validSolution(const lhs &A, const rhs &b, const rhs &x) const
     {
         //return b.isApprox(A*x);
         double err = (A*x - b).norm() / b.norm();
-        return (err > tol) ? false : true;
+
+        return (err <= tol);
     }
 };
 
-class DenseQR : public LinearSolver<DenseMatrix,DenseMatrix>
+class DenseQR : public LinearSolver<DenseMatrix, DenseMatrix>
 {
 private:
     bool doSolve(const DenseMatrix &A, const DenseMatrix &b, DenseMatrix &x) const
@@ -86,6 +70,7 @@ private:
         if (qr.info() == Eigen::Success)
         {
             x = qr.solve(b);
+
             return true;
         }
         return false;
@@ -105,15 +90,14 @@ private:
             // Solve LSE
             x = sparseSolver.solve(b);
 
-            if (sparseSolver.info() == Eigen::Success)
-                return true;
+            return sparseSolver.info() == Eigen::Success;
         }
 
         return false;
     }
 };
 
-class SparseLU : public LinearSolver<SparseMatrix,DenseMatrix>
+class SparseLU : public LinearSolver<SparseMatrix, DenseMatrix>
 {
 private:
     bool doSolve(const SparseMatrix &A, const DenseMatrix &b, DenseMatrix &x) const
@@ -130,15 +114,14 @@ private:
             // Solve LSE
             x = sparseSolver.solve(b);
 
-            if (sparseSolver.info() == Eigen::Success)
-                return true;
+            return sparseSolver.info() == Eigen::Success;
         }
 
         return false;
     }
 };
 
-class SparseQR : public LinearSolver<SparseMatrix,DenseMatrix>
+class SparseQR : public LinearSolver<SparseMatrix, DenseMatrix>
 {
 private:
     bool doSolve(const SparseMatrix &A, const DenseMatrix &b, DenseMatrix &x) const
@@ -153,8 +136,7 @@ private:
             // Solve LSE
             x = sparseSolver.solve(b);
 
-            if (sparseSolver.info() == Eigen::Success)
-                return true;
+            return sparseSolver.info() == Eigen::Success;
         }
 
         return false;
@@ -163,4 +145,4 @@ private:
 
 } // namespace MultivariateSplines
 
-#endif // LINEARSOLVER_H
+#endif // MS_LINEARSOLVER_H

@@ -1,33 +1,23 @@
 /*
-This file is part of the Multivariate Splines library.
-Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; if not, write to the Free Software Foundation, Inc.,
-51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * This file is part of the Multivariate Splines library.
+ * Copyright (C) 2012 Bjarne Grimstad (bjarne.grimstad@gmail.com)
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 
-#ifndef DATATABLE_H
-#define DATATABLE_H
+#ifndef MS_DATATABLE_H
+#define MS_DATATABLE_H
 
 #include <set>
 #include "datasample.h"
 
+#include <ostream>
+
 namespace MultivariateSplines
 {
-
-// TODO: namespace for interpolation classes
 
 #define SAVE_DOUBLE_PRECISION 17
 
@@ -72,8 +62,34 @@ public:
     /*
      * Debug
      */
-    void printSamples() const;  // Print point and values for all samples
-    void printGrid() const;     // Print the grid (that we know of so far)
+    template <typename _Char>
+    void printSamples(std::basic_ostream<_Char>& out) const
+    {
+        for(auto &sample : samples)
+        {
+            out << sample << std::endl;
+        }
+    }
+
+    template <typename _Char>
+    void printGrid(std::basic_ostream<_Char>& out) const
+    {
+        out << "===== Printing grid =====" << std::endl;
+
+        unsigned int i = 0;
+        for(auto &variable : grid)
+        {
+            out << 'x' << i++ << '(' << variable.size() << "): ";
+            for(double value : variable)
+            {
+                out << value << ' ';
+            }
+            out << std::endl;
+        }
+
+        out << "Unique samples added: " << samples.size() << std::endl;
+        out << "Samples required: " << getNumSamplesRequired() << std::endl;
+    }
 
     bool isGridComplete() const;
 
@@ -98,4 +114,4 @@ private:
 
 } // namespace MultivariateSplines
 
-#endif // DATATABLE_H
+#endif // MS_DATATABLE_H
