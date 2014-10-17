@@ -7,7 +7,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
-
 #include <vector>
 #include <datatable.h>
 #include <sstream>
@@ -229,6 +228,16 @@ bool test6()
     return is_identical(table, loadedTable);
 }
 
+std::vector<double> linspace(double start, double stop, unsigned int points)
+{
+    std::vector<double> ret;
+    double dx = 0;
+    if(points > 1)
+        dx = (stop - start)/(points-1);
+    for(unsigned int i = 0; i < points; ++i)
+        ret.push_back(start + i*dx);
+    return ret;
+}
 
 // Six-hump camelback function
 double f(DenseVector x)
@@ -243,20 +252,18 @@ void runExample()
     DataTable samples;
 
     // Sample function
-    double x_l = 0;
-    double x_u = 2;
-    int num_samples = 20;
-    double delta_x = (x_u - x_l)/(num_samples-1);
+    auto x0_vec = linspace(0, 2, 20);
+    auto x1_vec = linspace(0, 2, 20);
     DenseVector x(2);
     double y;
 
-    for(int i = 0; i < num_samples; i++)
+    for(auto x0 : x0_vec)
     {
-        for(int j = 0; j < num_samples; j++)
+        for(auto x1 : x1_vec)
         {
             // Sample function at x
-            x(0) = x_l + i*delta_x;
-            x(1) = x_l + j*delta_x;
+            x(0) = x0;
+            x(1) = x1;
             y = f(x);
 
             // Store sample
@@ -304,17 +311,17 @@ void runExample()
     cout << "-------------------------------------------"       << endl;
 
     // Evaluate error norm
-    std::vector<double> e_max(5,0.0);
-    int num_samples_2 = 200;
-    double delta_x_2 = (x_u - x_l)/(num_samples_2-1);
+    auto x0_vec_2 = linspace(0, 2, 200);
+    auto x1_vec_2 = linspace(0, 2, 200);
+    std::vector<double> e_max(5, 0.0);
 
-    for(int i = 0; i < num_samples_2; i++)
+    for(auto x0 : x0_vec_2)
     {
-        for(int j = 0; j < num_samples_2; j++)
+        for(auto x1 : x1_vec_2)
         {
             // Sample function at x
-            x(0) = i*delta_x_2;
-            x(1) = j*delta_x_2;
+            x(0) = x0;
+            x(1) = x1;
             y = f(x);
 
             e_max.at(0) = std::max(e_max.at(0), std::abs(bspline1.eval(x) - y));
@@ -334,20 +341,259 @@ void runExample()
     cout << "P-spline:             "   << e_max.at(3)       << endl;
     cout << "Thin-plate spline:    "   << e_max.at(4)       << endl;
     cout << "-------------------------------------------"   << endl;
-    cout << endl << endl;
+}
 
+bool compareBSplines(BSpline &bs, const BSpline &bs_orig)
+{
+    auto lb = bs.getDomainLowerBound();
+    auto ub = bs.getDomainUpperBound();
+
+    auto x0_vec = linspace(lb.at(0), ub.at(0), 10);
+    auto x1_vec = linspace(lb.at(1), ub.at(1), 10);
+
+    DenseVector x(2);
+    for(auto x0 : x0_vec)
+    {
+        for(auto x1 : x1_vec)
+        {
+            x(0) = x0;
+            x(1) = x1;
+
+            double yb = bs.eval(x);
+            double yb_orig = bs_orig.eval(x);
+            if(std::abs(yb-yb_orig) > 1e-8)
+            {
+                cout << yb << endl;
+                cout << yb_orig << endl;
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool domainReductionTest(BSpline &bs, const BSpline &bs_orig)
+{
+    if(bs.getNumVariables() != 2 || bs_orig.getNumVariables() != 2)
+        return false;
+
+    // Check for error
+    if(!compareBSplines(bs, bs_orig))
+        return false;
+
+    auto lb = bs.getDomainLowerBound();
+    auto ub = bs.getDomainUpperBound();
+
+    bool flag = false;
+    unsigned int index = 0;
+    for(; index < lb.size(); index++)
+    {
+        if(ub.at(index)-lb.at(index) > 1e-1)
+        {
+            flag = true;
+            break;
+        }
+    }
+
+    if(flag)
+    {
+        auto split = (ub.at(index) + lb.at(index))/2;
+
+        auto lb2 = lb;
+        auto ub2 = ub; ub2.at(index) = split;
+        BSpline bs2(bs);
+        bs2.reduceDomain(lb2, ub2);
+
+        auto lb3 = lb; lb3.at(index) = split;
+        auto ub3 = ub;
+        BSpline bs3(bs);
+        bs3.reduceDomain(lb3, ub3);
+
+        return (domainReductionTest(bs2,bs_orig) && domainReductionTest(bs3,bs_orig));
+    }
+
+    return true;
+}
+
+void runRecursiveDomainReductionTest()
+{
+    cout << endl << endl;
+    cout << "Starting recursive domain reduction test..." << endl;
+
+    // Create new DataTable to manage samples
+    DataTable samples;
+
+    // Sample function
+    auto x0_vec = linspace(0,2,20);
+    auto x1_vec = linspace(0,2,20);
+    DenseVector x(2);
+    double y;
+
+    for(auto x0 : x0_vec)
+    {
+        for(auto x1 : x1_vec)
+        {
+            // Sample function at x
+            x(0) = x0;
+            x(1) = x1;
+            y = f(x);
+
+            // Store sample
+            samples.addSample(x,y);
+        }
+    }
+
+    // Build B-splines that interpolate the samples
+//    BSpline bspline(samples, BSplineType::LINEAR);
+//    BSpline bspline(samples, BSplineType::QUADRATIC_FREE);
+    BSpline bspline(samples, BSplineType::CUBIC_FREE);
+
+    if(domainReductionTest(bspline,bspline))
+        cout << "Test finished successfully!" << endl;
+    else
+        cout << "Test failed!" << endl;
+}
+
+void testSplineDerivative()
+{
+    cout << endl << endl;
+    cout << "Testing spline derivative..." << endl;
+
+    // Create new DataTable to manage samples
+    DataTable samples;
+
+    // Sample function
+    double x0_lb = 0;
+    double x0_ub = 2;
+    double x1_lb = 0;
+    double x1_ub = 2;
+
+    auto x0_vec = linspace(x0_lb, x0_ub, 20);
+    auto x1_vec = linspace(x1_lb, x1_ub, 20);
+    DenseVector x(2);
+    double y;
+
+    for(auto x0 : x0_vec)
+    {
+        for(auto x1 : x1_vec)
+        {
+            // Sample function at x
+            x(0) = x0;
+            x(1) = x1;
+            y = f(x);
+
+            // Store sample
+            samples.addSample(x,y);
+        }
+    }
+
+    // Build spline that interpolate the samples
+//    BSpline spline(samples, BSplineType::LINEAR);
+//    BSpline spline(samples, BSplineType::QUADRATIC_FREE);
+    BSpline spline(samples, BSplineType::CUBIC_FREE);
+//    RBFSpline spline(samples, RadialBasisFunctionType::THIN_PLATE_SPLINE);
+//    RBFSpline spline(samples, RadialBasisFunctionType::MULTIQUADRIC);
+
+    auto x0_vec_2 = linspace(x0_lb, x0_ub, 200);
+    auto x1_vec_2 = linspace(x1_lb, x1_ub, 200);
+
+    double tol = 1e-4;  // Absolute error tolerance
+    double h = 1e-8;    // Finite difference step length
+    double x0_diff, x1_diff;
+
+    for(auto x0 : x0_vec_2)
+    {
+        for(auto x1 : x1_vec_2)
+        {
+            x(0) = x0;
+            x(1) = x1;
+
+            DenseMatrix dfdx = spline.evalJacobian(x);
+            if(dfdx.cols() != 2)
+            {
+                cout << "Test failed - check Jacobian size!" << endl;
+                return;
+            }
+
+            // Finite difference in x0
+            if(x(0) == x0_ub)
+            {
+                // Backward diff
+                DenseVector dx1f = x;
+                DenseVector dx1b = x; dx1b(0) = x(0)-h;
+                x0_diff = (spline.eval(dx1f) - spline.eval(dx1b))/h;
+            }
+            else if(x(0) == x0_lb)
+            {
+                // Forward diff
+                DenseVector dx1f = x; dx1f(0) = x(0)+h;
+                DenseVector dx1b = x;
+                x0_diff = (spline.eval(dx1f) - spline.eval(dx1b))/h;
+            }
+            else
+            {
+                // Central diff
+                DenseVector dx1f = x; dx1f(0) = x(0)+h/2;
+                DenseVector dx1b = x; dx1b(0) = x(0)-h/2;
+                x0_diff = (spline.eval(dx1f) - spline.eval(dx1b))/h;
+            }
+
+            // Finite difference in x1
+            if(x(1) == x1_ub)
+            {
+                // Backward diff
+                DenseVector dx2f = x;
+                DenseVector dx2b = x; dx2b(1) = x(1)-h;
+                x1_diff = (spline.eval(dx2f) - spline.eval(dx2b))/h;
+            }
+            else if(x(1) == x1_lb)
+            {
+                // Forward diff
+                DenseVector dx2f = x; dx2f(1) = x(1)+h;
+                DenseVector dx2b = x;
+                x1_diff = (spline.eval(dx2f) - spline.eval(dx2b))/h;
+            }
+            else
+            {
+                // Central diff
+                DenseVector dx2f = x; dx2f(1) = x(1)+h/2;
+                DenseVector dx2b = x; dx2b(1) = x(1)-h/2;
+                x1_diff = (spline.eval(dx2f) - spline.eval(dx2b))/h;
+            }
+
+            if(std::abs(dfdx(0) - x0_diff) > tol
+                || std::abs(dfdx(1) - x1_diff) > tol)
+            {
+                cout << x0 << ", " << x1 << endl;
+                cout << dfdx(0) - x0_diff << endl;
+                cout << dfdx(1) - x1_diff << endl;
+                cout << "Test failed - check Jacobian!" << endl;
+                return;
+            }
+        }
+    }
+
+    cout << "Test finished successfully!" << endl;
 }
 
 void run_tests()
 {
     runExample();
 
-    cout << "test1(): " << (test1() ? "success" : "fail") << endl;
-    cout << "test2(): " << (test2() ? "success" : "fail") << endl;
-    cout << "test3(): " << (test3() ? "success" : "fail") << endl;
-    cout << "test4(): " << (test4() ? "success" : "fail") << endl;
-    cout << "test5(): " << (test5() ? "success" : "fail") << endl;
-    cout << "test6(): " << (test6() ? "success" : "fail") << endl;
+    testSplineDerivative();
+
+    runRecursiveDomainReductionTest();
+
+    cout << endl << endl;
+    cout << "Testing load and save functionality:       "   << endl;
+    cout << "-------------------------------------------"   << endl;
+    cout << "test1(): " << (test1() ? "success" : "fail")   << endl;
+    cout << "test2(): " << (test2() ? "success" : "fail")   << endl;
+    cout << "test3(): " << (test3() ? "success" : "fail")   << endl;
+    cout << "test4(): " << (test4() ? "success" : "fail")   << endl;
+    cout << "test5(): " << (test5() ? "success" : "fail")   << endl;
+    cout << "test6(): " << (test6() ? "success" : "fail")   << endl;
 }
 
 int main(int argc, char **argv)
